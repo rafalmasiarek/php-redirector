@@ -45,6 +45,10 @@ use rafalmasiarek\Redirector;
 
 $config = [
   "default_status" => 301,
+  "no_match" => [
+    'status' => 404,
+    'body'   => 'Redirect rule not found',
+  ],
   "utm" => [
     "enable" => true,
     "defaults" => [
@@ -367,6 +371,9 @@ UniversalRedirector::make($config)->run()
 - **loop_protection** (bool): avoid redirecting to the same URL
 - **allowed_targets** (string[]): hostname allowlist for target validation
 - **preserve_path/query/fragment** (bool): carry components to target
+- **no_match** (array): fallback response when no rule matches and no `onNoMatch` hook is set; 
+  - `status` (int) 
+  - `body` (string) 
 - **utm** (array):
   - `enable` (bool)
   - `defaults` (array): e.g. `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`
@@ -388,24 +395,29 @@ UniversalRedirector::make($config)->run()
 
 All hooks are optional.
 
+### Return conventions
+- Hooks that return **`?string`**: returning a **non-empty string** overrides the corresponding value; returning `null` or `''` leaves it unchanged.
+- Hooks that return an **array shape**: only provided keys are applied; others are left unchanged.
+- Hooks not listed with a return type are **void**; any return value is ignored.
+
 ### Return-value semantics
 - `afterBuildTarget($ctx, $rule, $target): ?string` — return a non-empty string to override `$target`.
-- `beforeApplyUtms($ctx, $rule, $target, $utm): array{target?:string, utm?:array}` — return partial overrides for `$target` and/or `$utm`.
+- `beforeApplyUtms($ctx, $rule, $target, $utm): array{target?: string, utm?: array}` — return partial overrides for `$target` and/or `$utm`.
 - `afterApplyUtms($ctx, $rule, $finalTarget, $utm): ?string` — return a non-empty string to override the final URL.
 
-> Note: `beforeSend()` keeps pass-by-reference params so it can mutate `$target`/`$status`. Return `false` to take over the response.
+> Note: `beforeSend()` keeps pass-by-reference params so it can mutate `$target` / `$status`. Return `false` to take over the response (short-circuit). Any other return value is ignored.
 
 ### Available hooks
 
 - `onSkip($ctx)`
 - `beforeMatch($ctx)`
-- `afterMatch($ctx, $rule)`  
+- `afterMatch($ctx, $rule)`
 - `onNoMatch($ctx)`
 - `beforeBuildTarget($ctx, $rule)`
 - `afterBuildTarget($ctx, $rule, $target): ?string`
-- `beforeApplyUtms($ctx, $rule, $target, $utm): array{target?:string, utm?:array}`
+- `beforeApplyUtms($ctx, $rule, $target, $utm): array{target?: string, utm?: array}`
 - `afterApplyUtms($ctx, $rule, $finalTarget, $utm): ?string`
-- `beforeSend($ctx, $rule, &$target, &$status)` - return `false` to take over the response
+- `beforeSend($ctx, $rule, &$target, &$status)` — return `false` to take over the response
 - `onDryRun($ctx, $rule, $target, $status)`
 - `onError($ctx, \Throwable $e)`
 

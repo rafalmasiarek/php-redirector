@@ -70,8 +70,12 @@ final class Redirector
         $matchedRule = $this->matchRule();
         $this->hook('afterMatch', $ctx, $matchedRule);
         if (!$matchedRule) {
-            $this->hook('onNoMatch', $ctx);
-            $this->respond(204, 'No redirect (no rules matched).');
+            if (isset($this->cfg['hooks']['onNoMatch'])) {
+                $this->hook('onNoMatch', $ctx);
+                return;
+            }
+            $nm = $this->cfg['no_match'];
+            $this->respond($nm['status'], $nm['body']);
             return;
         }
 
@@ -143,25 +147,27 @@ final class Redirector
     private function withDefaults(array $c): array
     {
         $d = [
-            'dry_run'           => false,
-            'default_status'    => 301,
-            'force_https'       => false,
-            'loop_protection'   => true,
-            'allowed_targets'   => [],
-            'preserve_path'     => true,
-            'preserve_query'    => true,
-            'preserve_fragment' => true,
-            'utm' => [
-                'enable'               => true,
-                'defaults'             => [],
-                'allow_query_override' => true,
-                'strip_existing'       => false,
-                'auto_source_from_host' => true,
+            'dry_run'                => false,
+            'default_status'         => 301,
+            'force_https'            => false,
+            'loop_protection'        => true,
+            'loop_protection_status' => 204,
+            'allowed_targets'        => [],
+            'preserve_path'          => true,
+            'preserve_query'         => true,
+            'preserve_fragment'      => true,
+            'no_match'               => ['status' => 204, 'body' => 'No redirect (no rules matched).'],
+            'utm'                    => [
+                'enable'                 => true,
+                'defaults'               => [],
+                'allow_query_override'   => true,
+                'strip_existing'         => false,
+                'auto_source_from_host'  => true,
             ],
-            'rules'      => [],
-            'skip'       => [],
-            'hooks'      => [],              // string => callable
-            'middleware' => [],              // array of MiddlewareInterface
+            'rules'                  => [],
+            'skip'                   => [],
+            'hooks'                  => [],              // string => callable
+            'middleware'             => [],              // array of MiddlewareInterface
         ];
         return array_replace_recursive($d, $c);
     }
