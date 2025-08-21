@@ -458,12 +458,41 @@ final class Redirector
      * Force HTTPS for the given URL.
      *
      * @param string $url
+     * @param bool $dropDefaultPorts Whether to drop default ports.
+     * @param array|null $portMap Optional port mapping (e.g. [80 => 8080, 443 => null] to drop).
      * @return string
      */
-    private function forceHttps(string $url): string
+    private function forceHttps(string $url, bool $dropDefaultPorts = true, ?array $portMap = null): string
     {
         $p = parse_url($url);
+
+        // Guard: only absolute http(s) URLs with host
+        $scheme = isset($p['scheme']) ? strtolower($p['scheme']) : null;
+        if (!in_array($scheme, ['http', 'https'], true) || empty($p['host'])) {
+            return $url; // leave untouched
+        }
+
+        $origPort   = $p['port'] ?? null;
         $p['scheme'] = 'https';
+
+        // Port mapping (explicit policy wins)
+        if ($portMap !== null && $origPort !== null && array_key_exists($origPort, $portMap)) {
+            $mapped = $portMap[$origPort];
+            if ($mapped === null) {
+                unset($p['port']);
+            } else {
+                $p['port'] = (int)$mapped;
+            }
+        } else {
+            // No mapping: keep non-defaults, drop defaults
+            if (isset($p['port'])) {
+                if ($dropDefaultPorts && ((int)$p['port'] === 80 || (int)$p['port'] === 443)) {
+                    unset($p['port']);
+                }
+                // else: leave custom ports as-is
+            }
+        }
+
         return $this->unparseUrl($p);
     }
 
