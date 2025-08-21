@@ -16,12 +16,12 @@ A highly configurable **PHP redirect engine** with:
 
 With Composer:
 ```
-$ composer require your-vendor/universal-redirector
+$ composer require rafalmasiarek/redirector
 ```
 Or include manually:
 
 ```
-require __DIR__ . "/src/UniversalRedirector.php";
+require __DIR__ . "/src/Redirector.php";
 ```
 ---
 
@@ -41,7 +41,7 @@ RewriteRule ^(.*)$ /redirector.php [L,QSA]
 <?php
 require __DIR__ . "/vendor/autoload.php";
 
-use UniversalRedirector\UniversalRedirector;
+use rafalmasiarek\Redirector;
 
 $config = [
   "default_status" => 301,
@@ -78,7 +78,7 @@ UniversalRedirector::make($config)->run();
 <?php
 require __DIR__ . "/vendor/autoload.php";
 
-use UniversalRedirector\UniversalRedirector;
+use rafalmasiarek\Redirector;
 
 $config = [
     "default_status" => 301,
@@ -149,10 +149,10 @@ This approach keeps the redirect configuration cleaner and makes the logic reusa
 <?php
 require __DIR__ . "/vendor/autoload.php";
 
-use UniversalRedirector\UniversalRedirector;
-use UniversalRedirector\Middleware\ServerGlobalsMiddleware;
-use UniversalRedirector\Middleware\MiddlewareInterface;
-use UniversalRedirector\Context;
+use rafalmasiarek\Redirector;
+use rafalmasiarek\Redirector\Context;
+use rafalmasiarek\Middleware\ServerGlobalsMiddleware;
+use rafalmasiarek\Middleware\MiddlewareInterface;
 
 // Custom middleware
 class LoggingMiddleware implements MiddlewareInterface
@@ -221,7 +221,7 @@ UniversalRedirector::make($config)->run();
 <?php
 require __DIR__ . '/vendor/autoload.php';
 
-use UniversalRedirector\UniversalRedirector;
+use rafalmasiarek\Redirector;
 
 $config = [
   'default_status' => 301,
@@ -272,9 +272,9 @@ UniversalRedirector::make($config)->run();
 <?php
 require __DIR__ . '/vendor/autoload.php';
 
-use UniversalRedirector\UniversalRedirector;
-use UniversalRedirector\Middleware\MiddlewareInterface;
-use UniversalRedirector\Context;
+use rafalmasiarek\Redirector;
+use rafalmasiarek\Redirector\Context;
+use rafalmasiarek\Redirector\Middleware\MiddlewareInterface;
 
 // Middleware geo-redirect
 class GeoRedirectMiddleware implements MiddlewareInterface
@@ -407,9 +407,9 @@ Available hooks (all optional):
 Interface:
 
 ```
-namespace UniversalRedirector\Middleware;
+namespace rafalmasiarek\Redirector\Middleware;
 
-use UniversalRedirector\Context;
+use rafalmasiarek\Redirector\Context;
 
 interface MiddlewareInterface {
   public function process(
@@ -421,7 +421,7 @@ interface MiddlewareInterface {
 Default middleware:
 
 ```
-  use UniversalRedirector\Middleware\ServerGlobalsMiddleware;
+  use rafalmasiarek\Redirector\Middleware\ServerGlobalsMiddleware;
 
   // Populates $ctx->ip and $ctx->ua from $_SERVER and exposes lazy headers reader.
 ```
@@ -430,7 +430,7 @@ Register:
 
 ```
 "middleware" => [
-  new \UniversalRedirector\Middleware\ServerGlobalsMiddleware(),
+  new \rafalmasiarek\Redirector\Middleware\ServerGlobalsMiddleware(),
 ],
 ```
 
