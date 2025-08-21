@@ -476,10 +476,17 @@ final class Redirector
     private function assertAllowedTarget(string $url): void
     {
         if (empty($this->cfg['allowed_targets'])) return;
-        $host = parse_url($url, PHP_URL_HOST);
-        if (!$host || !in_array($host, $this->cfg['allowed_targets'], true)) {
-            $this->hook('onError', $this->ctx, new \RuntimeException('Target host not allowed: ' . ($host ?: 'unknown')));
-            throw new \RuntimeException('Target host not allowed: ' . ($host ?: 'unknown'));
+        // Parse the target URL to extract the host
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+        if ($host === '') {
+            $this->hook('onError', $this->ctx, new \RuntimeException('Target host not allowed: empty'));
+            throw new \RuntimeException('Target host not allowed: empty');
+        }
+        // Check against allowlist
+        $allowed = array_map('strtolower', (array) $this->cfg['allowed_targets']);
+        if (!in_array($host, $allowed, true)) {
+            $this->hook('onError', $this->ctx, new \RuntimeException("Target host not allowed: $host"));
+            throw new \RuntimeException("Target host not allowed: $host");
         }
     }
 
