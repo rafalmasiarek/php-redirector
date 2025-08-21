@@ -1,0 +1,16 @@
+{
+  "name": "rafalmasiarek/redirector",
+  "description": "Universal PHP redirector with rules, UTM appending, hooks, and middleware support (PSR-4).",
+  "type": "library",
+  "license": "MIT",
+  "autoload": {
+    "psr-4": {
+      "rafalmasiarek\\Redirector\\": "src/"
+    }
+  },
+  "require": {
+    "php": ">=8.0"
+  },
+  "minimum-stability": "stable",
+  "prefer-stable": true
+}
