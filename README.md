@@ -368,12 +368,14 @@ UniversalRedirector::make($config)->run()
 - **dry_run** (bool): when true, outputs JSON instead of sending `Location`
 - **default_status** (int): default 301/302/307/308
 - **force_https** (bool): force https in target URL
-- **loop_protection** (bool): avoid redirecting to the same URL
+- **loop_protection** (array): avoid redirecting to the same URL:
+  - `status` (int)
+  - `body` (string)
 - **allowed_targets** (string[]): hostname allowlist for target validation
 - **preserve_path/query/fragment** (bool): carry components to target
-- **no_match** (array): fallback response when no rule matches and no `onNoMatch` hook is set; 
-  - `status` (int) 
-  - `body` (string) 
+- **no_match** (array): fallback response when no rule matches and no `onNoMatch` hook is set: 
+  - `status` (int)
+  - `body` (string)
 - **utm** (array):
   - `enable` (bool)
   - `defaults` (array): e.g. `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`
@@ -390,6 +392,38 @@ UniversalRedirector::make($config)->run()
 - **middleware** (MiddlewareInterface[]): PSR-style pipeline
 
 ---
+
+## Loop-protection behavior
+
+When the computed target URL equals the current request URL (a redirect loop), the redirect is **skipped** and a configurable response is returned via `loop_protection`.
+
+**Default:**
+```php
+'loop_protection' => [
+  'status' => 204,
+  'body'   => 'Already at target (loop protection).',
+],
+```
+
+**Disable loop protection:**
+```php
+'loop_protection' => [],   // or: false
+```
+
+**Custom example (return 200 OK):**
+```php
+'loop_protection' => [
+  'status' => 200,
+  'body'   => 'OK',
+],
+```
+
+**Notes:**
+- Applied **only** when the source URL equals the built target URL.
+- When triggered, **no `Location` header** is sent and the middleware pipeline is skipped.
+- Use 204 for “no content” (typical), or 200 if you want to render a page.
+
+--- 
 
 ## Hooks
 

@@ -103,8 +103,10 @@ final class Redirector
         $this->assertAllowedTarget($target);
 
         // Loop protection
-        if ($this->cfg['loop_protection'] && $this->urlsEqual($ctx->url, $target)) {
-            $this->respond(208, 'Already at target (loop protection).');
+        $isLoopProtectionEnabled = is_array($this->cfg['loop_protection']) && !empty($this->cfg['loop_protection']);
+        if ($isLoopProtectionEnabled) {
+            $lp = $this->cfg['loop_protection'];
+            $this->respond($lp['status'], $lp['body']);
             return;
         }
 
@@ -150,8 +152,10 @@ final class Redirector
             'dry_run'                => false,
             'default_status'         => 301,
             'force_https'            => false,
-            'loop_protection'        => true,
-            'loop_protection_status' => 204,
+            'loop_protection'        => [
+                'status' => 204,
+                'body'   => 'Already at target (loop protection).',
+            ],
             'allowed_targets'        => [],
             'preserve_path'          => true,
             'preserve_query'         => true,
