@@ -96,7 +96,11 @@ final class Redirector
 
         // Force HTTPS if configured
         if ($this->cfg['force_https']) {
-            $target = $this->forceHttps($target);
+            $target = $this->forceHttps(
+                $target,
+                true, // drop default ports
+                $this->cfg['port_map'] ?? null
+            );
         }
 
         // Validate target host if allowlist provided
@@ -152,6 +156,11 @@ final class Redirector
             'dry_run'                => false,
             'default_status'         => 301,
             'force_https'            => false,
+            'default_ports'           => [
+                'http'  => 80,
+                'https' => 443,
+            ],
+            'port_map'         => null, // e.g. [80 => null, 8080 => 8443]
             'loop_protection'        => [
                 'status' => 204,
                 'body'   => 'Already at target (loop protection).',
@@ -322,13 +331,40 @@ final class Redirector
         });
         $target = strtr($target, $replacements);
 
-        // Relative target -> join with current host/scheme
-        if (!preg_match('#^https?://#i', $target)) {
-            $base = $this->ctx->scheme . '://' . $this->ctx->host;
-            if ($this->ctx->port && !in_array([$this->ctx->scheme, $this->ctx->port], [['http', 80], ['https', 443]], true)) {
-                $base .= ':' . $this->ctx->port;
+        // Absolute? (http/https) — leave as-is. Scheme-relative? (//host/...) — add current scheme.
+        // Relative? — join with current scheme/host and only a non-default port (based on default_ports).
+        if (preg_match('#^https?://#i', $target)) {
+            // absolute — nothing to do
+        } elseif (strncmp($target, '//', 2) === 0) {
+            $target = $this->ctx->scheme . ':' . $target;
+        } else {
+            $scheme      = $this->ctx->scheme;
+            // Take host parsed from full URL to avoid duplicated :port from HTTP_HOST
+            $host        = parse_url($this->ctx->url, PHP_URL_HOST) ?? $this->ctx->host;
+            $port        = $this->ctx->port;
+            $defaults    = $this->cfg['default_ports'] ?? ['http' => 80, 'https' => 443];
+            $defaultPort = isset($defaults[$scheme]) ? (int)$defaults[$scheme] : null;
+
+            if ($port !== null && $defaultPort !== null && (int)$port !== $defaultPort) {
+                $host .= ':' . (int)$port;
             }
+
+            $base   = $scheme . '://' . $host;
             $target = rtrim($base, '/') . '/' . ltrim($target, '/');
+        }
+
+        // Apply preserve_path if target has no explicit path
+        if (!empty($this->cfg['preserve_path'])) {
+            $tp    = parse_url($target);
+            $tpath = $tp['path'] ?? '';
+            if ($tpath === '' || $tpath === '/') {
+                $src = $this->ctx->path ?? '/';
+                if ($src === '' || $src[0] !== '/') {
+                    $src = '/' . ltrim($src, '/');
+                }
+                $tp['path'] = $src;
+                $target = $this->unparseUrl($tp);
+            }
         }
 
         return $target;
@@ -495,11 +531,12 @@ final class Redirector
             }
         } else {
             // No mapping: keep non-defaults, drop defaults
-            if (isset($p['port'])) {
-                if ($dropDefaultPorts && ((int)$p['port'] === 80 || (int)$p['port'] === 443)) {
+            if ($dropDefaultPorts && isset($p['port'])) {
+                $port = (int) $p['port'];
+                $dp     = $this->cfg['default_ports'];
+                if ($port === (int) $dp['https'] || $port === (int) $dp['http']) {
                     unset($p['port']);
                 }
-                // else: leave custom ports as-is
             }
         }
 

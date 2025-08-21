@@ -18,17 +18,17 @@ With Composer:
 ```
 $ composer require rafalmasiarek/redirector
 ```
-Or include manually:
 
+Or include manually:
 ```
 require __DIR__ . "/src/Redirector.php";
 ```
+
 ---
 
 ## Quickstart (Apache + PHP)
 
 **.htaccess**
-
 ```
 RewriteEngine On
 RewriteCond %{REQUEST_URI} !^/redirector\.php$ [NC]
@@ -36,18 +36,17 @@ RewriteRule ^(.*)$ /redirector.php [L,QSA]
 ```
 
 **redirector.php**
-
 ```php
 <?php
 require __DIR__ . "/vendor/autoload.php";
 
-use rafalmasiarek\Redirector;
+use rafalmasiarek\Redirector\Redirector;
 
 $config = [
   "default_status" => 301,
   "no_match" => [
-    'status' => 404,
-    'body'   => 'Redirect rule not found',
+    "status" => 404,
+    "body"   => "Redirect rule not found",
   ],
   "utm" => [
     "enable" => true,
@@ -70,19 +69,28 @@ $config = [
   ],
 ];
 
-UniversalRedirector::make($config)->run();
+Redirector::make($config)->run();
 ```
+
 ---
 
 ## More advanced configuration
 
-1) **Measure redirect execution time, log matched rules, and handle missing rules or unexpected errors.**
+*(ensure namespaces)*
+```php
+use rafalmasiarek\Redirector\Redirector;
+use rafalmasiarek\Redirector\Context;
+use rafalmasiarek\Redirector\Middleware\ServerGlobalsMiddleware;
+use rafalmasiarek\Redirector\Middleware\MiddlewareInterface;
+```
 
+1) **Measure redirect execution time, log matched rules, and handle missing rules or unexpected errors.**
 ```php
 <?php
 require __DIR__ . "/vendor/autoload.php";
 
-use rafalmasiarek\Redirector;
+use rafalmasiarek\Redirector\Redirector;
+use rafalmasiarek\Redirector\Middleware\ServerGlobalsMiddleware;
 
 $config = [
     "default_status" => 301,
@@ -100,28 +108,20 @@ $config = [
     ],
 
     "hooks" => [
-
-        // 1. Start timer before matching rules
         "beforeMatch" => function($ctx) {
             $ctx->meta["start_time"] = microtime(true);
         },
-
-        // 2. Log when rule is matched or not
         "afterMatch" => function($ctx, $rule) {
             if ($rule) {
                 error_log("Matched rule: " . ($rule["name"] ?? "unnamed") . " for URL " . $ctx->url);
             }
         },
-
-        // 3. If no rule matched → log error and throw exception
         "onNoMatch" => function($ctx) {
             error_log("No redirect rule matched for URL: " . $ctx->url);
             http_response_code(404);
             echo "Redirect rule not found";
             exit;
         },
-
-        // 4. Measure total redirect processing time
         "beforeSend" => function($ctx, $rule, $target, $status) {
             $elapsed = microtime(true) - ($ctx->meta["start_time"] ?? microtime(true));
             error_log(sprintf(
@@ -132,8 +132,6 @@ $config = [
                 $elapsed
             ));
         },
-
-        // 5. Handle unexpected errors
         "onError" => function($ctx, Throwable $e) {
             error_log("Redirector error at {$ctx->url}: " . $e->getMessage());
             http_response_code(500);
@@ -143,54 +141,43 @@ $config = [
     ],
 ];
 
-UniversalRedirector::make($config)->run();
+Redirector::make($config)->run();
 ```
 
-Instead of using only hooks, you can encapsulate timing, logging, and error handling in a **custom middleware**.  
-This approach keeps the redirect configuration cleaner and makes the logic reusable across projects.
-
+Instead of using only hooks, you can encapsulate timing, logging, and error handling in a **custom middleware**.
 ```php
 <?php
 require __DIR__ . "/vendor/autoload.php";
 
-use rafalmasiarek\Redirector;
+use rafalmasiarek\Redirector\Redirector;
 use rafalmasiarek\Redirector\Context;
-use rafalmasiarek\Middleware\ServerGlobalsMiddleware;
-use rafalmasiarek\Middleware\MiddlewareInterface;
+use rafalmasiarek\Redirector\Middleware\ServerGlobalsMiddleware;
+use rafalmasiarek\Redirector\Middleware\MiddlewareInterface;
 
-// Custom middleware
 class LoggingMiddleware implements MiddlewareInterface
 {
     public function process(Context &$ctx, ?array &$rule, ?string &$target, ?int &$status, callable $next): bool
     {
-        // Start timing
         $ctx->meta["start_time"] = microtime(true);
 
         try {
-            // Run next middleware + redirect logic
             $result = $next($ctx, $rule, $target, $status);
 
-            // No rule matched → error handling
             if ($rule === null) {
                 error_log("No redirect rule matched for URL: " . $ctx->url);
                 http_response_code(404);
                 echo "Redirect rule not found";
-                return false; // stop pipeline
+                return false;
             }
 
-            // Log timing before sending redirect
             $elapsed = microtime(true) - $ctx->meta["start_time"];
             error_log(sprintf(
                 "Redirecting %s → %s [%d] in %.4f sec",
-                $ctx->url,
-                $target,
-                $status ?? 0,
-                $elapsed
+                $ctx->url, $target, $status ?? 0, $elapsed
             ));
 
             return $result;
         } catch (\Throwable $e) {
-            // Global error handling
             error_log("Redirector error at {$ctx->url}: " . $e->getMessage());
             http_response_code(500);
             echo "Internal redirect error";
@@ -203,9 +190,8 @@ $config = [
     "default_status" => 301,
     "middleware" => [
         new ServerGlobalsMiddleware(),
-        new LoggingMiddleware(), // our custom timing & logging
+        new LoggingMiddleware(),
     ],
-
     "rules" => [
         [
             "name"   => "example-rule",
@@ -216,20 +202,18 @@ $config = [
     ],
 ];
 
-UniversalRedirector::make($config)->run();
+Redirector::make($config)->run();
 ```
 
-2) **Block country with helper function** 
-
+2) **Block country with helper function**
 ```php
 <?php
 require __DIR__ . '/vendor/autoload.php';
 
-use rafalmasiarek\Redirector;
+use rafalmasiarek\Redirector\Redirector;
 
 $config = [
   'default_status' => 301,
-
   'rules' => [
     [
       'name'   => 'any-redirect',
@@ -238,24 +222,19 @@ $config = [
       'status' => 301,
     ],
   ],
-
   'hooks' => [
     'beforeSend' => function($ctx, $rule, $target, $status) {
-        $getCountry = function() use ($ctx) {
-            $headers = is_callable($ctx->headers) ? ($ctx->headers)() : [];
-            $h = array_change_key_case($headers, CASE_LOWER);
-            $country =
-                ($h['cloudfront-viewer-country'] ?? null) ?:   // AWS CloudFront
-                ($h['cf-ipcountry'] ?? null) ?:                // Cloudflare
-                ($h['x-geo-country'] ?? null) ?:               // inne CDN/proxy
-                ($_SERVER['GEOIP_COUNTRY_CODE'] ?? null) ?:    // mod_geoip
-                ($_SERVER['GEOIP2_COUNTRY_ISO_CODE'] ?? null); // mod_maxminddb
-            return $country ? strtoupper($country) : null;
-        };
+        $headers = is_callable($ctx->headers) ? ($ctx->headers)() : [];
+        $h = array_change_key_case($headers, CASE_LOWER);
+        $country =
+            ($h['cloudfront-viewer-country'] ?? null) ?:
+            ($h['cf-ipcountry'] ?? null) ?:
+            ($h['x-geo-country'] ?? null) ?:
+            ($_SERVER['GEOIP_COUNTRY_CODE'] ?? null) ?:
+            ($_SERVER['GEOIP2_COUNTRY_ISO_CODE'] ?? null);
+        $cc = $country ? strtoupper($country) : null;
 
         $blocked = ['RU','BY'];
-        $cc = $getCountry();
-
         if ($cc && in_array($cc, $blocked, true)) {
             http_response_code(403);
             header('Content-Type: text/plain; charset=utf-8');
@@ -267,28 +246,24 @@ $config = [
   ],
 ];
 
-UniversalRedirector::make($config)->run();
+Redirector::make($config)->run();
 ```
 
 3) **Geofencing redirect with middleware**
-
 ```php
 <?php
 require __DIR__ . '/vendor/autoload.php';
 
-use rafalmasiarek\Redirector;
+use rafalmasiarek\Redirector\Redirector;
 use rafalmasiarek\Redirector\Context;
 use rafalmasiarek\Redirector\Middleware\MiddlewareInterface;
 
-// Middleware geo-redirect
 class GeoRedirectMiddleware implements MiddlewareInterface
 {
     public function process(Context &$ctx, ?array &$rule, ?string &$target, ?int &$status, callable $next): bool
     {
         $ok = $next($ctx, $rule, $target, $status);
-        if (!$ok) {
-            return false;
-        }
+        if (!$ok) return false;
 
         $headers = is_callable($ctx->headers) ? ($ctx->headers)() : [];
         $h = array_change_key_case($headers, CASE_LOWER);
@@ -301,10 +276,7 @@ class GeoRedirectMiddleware implements MiddlewareInterface
         $cc = $country ? strtoupper($country) : null;
 
         if ($cc === 'DE' || $cc === 'FR') {
-            $map = [
-                'DE' => 'de.example.com',
-                'FR' => 'fr.example.com',
-            ];
+            $map = ['DE' => 'de.example.com', 'FR' => 'fr.example.com'];
             $host = $map[$cc];
 
             $p = parse_url($target);
@@ -345,11 +317,7 @@ class GeoRedirectMiddleware implements MiddlewareInterface
 
 $config = [
   'default_status' => 301,
-
-  'middleware' => [
-    new GeoRedirectMiddleware(),
-  ],
-
+  'middleware' => [ new GeoRedirectMiddleware() ],
   'rules' => [
     [
       'name'   => 'to-www',
@@ -360,20 +328,24 @@ $config = [
   ],
 ];
 
-UniversalRedirector::make($config)->run()
+Redirector::make($config)->run();
 ```
 
-## Configuration Reference
+---
+
+## Configuration Reference (UPDATED)
 
 - **dry_run** (bool): when true, outputs JSON instead of sending `Location`
 - **default_status** (int): default 301/302/307/308
-- **force_https** (bool): force https in target URL
-- **loop_protection** (array): avoid redirecting to the same URL:
+- **force_https** (bool): force HTTPS in the final URL; **drops default ports** based on `default_ports`; respects `port_map` if provided
+- **default_ports** (array): default ports per scheme, e.g. `["http" => 80, "https" => 443]`
+- **port_map** (array|null): optional mapping when switching to HTTPS, e.g. `[80 => null, 8080 => 8443]`; `null` value means “drop port”
+- **loop_protection** (array|false): response when a redirect loop is detected
   - `status` (int)
   - `body` (string)
-- **allowed_targets** (string[]): hostname allowlist for target validation
-- **preserve_path/query/fragment** (bool): carry components to target
-- **no_match** (array): fallback response when no rule matches and no `onNoMatch` hook is set: 
+- **allowed_targets** (string[]): hostname allowlist for target validation (case-insensitive)
+- **preserve_path/query/fragment** (bool): carry components from the source request into the target (see below)
+- **no_match** (array): fallback response when no rule matches and no `onNoMatch` hook is set
   - `status` (int)
   - `body` (string)
 - **utm** (array):
@@ -381,10 +353,10 @@ UniversalRedirector::make($config)->run()
   - `defaults` (array): e.g. `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`
   - `allow_query_override` (bool): allow incoming `?utm_*` to override defaults
   - `strip_existing` (bool): strip existing `utm_*` from preserved query
-  - `auto_source_from_host` (bool): fallback `utm_source` from source host
-- **rules** (array of maps): first match wins
+  - `auto_source_from_host` (bool): derive `utm_source` from the source host if missing
+- **rules** (array): first match wins
   - `match`: `host` | `host_wildcard` | `path` | `path_wildcard` | `path_regex` | `query` | `url_regex`
-  - `target`: supports `$1..$n` from regex/wildcard and tokens `{host}`, `{path}`, `{scheme}`
+  - `target`: supports `$1..$n` (percent-encoded) and tokens `{host}`, `{path}`, `{scheme}`
   - `status`: 301|302|307|308
   - `utm`: per-rule UTM overrides
 - **skip** (string[]): paths to skip (no redirect)
@@ -393,11 +365,35 @@ UniversalRedirector::make($config)->run()
 
 ---
 
+## Preserve-path semantics
+
+When `preserve_path` is enabled and the computed target URL **has no explicit path** (empty or `/`), the redirector **preserves the source path** (`$ctx->path`) in the final target.
+
+**Examples**
+- Source: `GET http://old.tld/products/42`, rule target: `https://new.tld`  
+  → Result: `https://new.tld/products/42`
+- Source: `GET http://old.tld/`, rule target: `https://new.tld`  
+  → Result: `https://new.tld/`
+- If the rule target already has a path (e.g. `https://new.tld/shop`), nothing is changed.
+
+Order: after building the absolute target, **before** query/fragment preservation and UTMs.
+
+---
+
+## Ports & HTTPS behavior
+
+- For **relative targets**, the redirector joins the current `scheme://host` and appends the current port **only if it differs** from the scheme’s default in `default_ports`.
+- With `force_https: true`, the scheme is switched to HTTPS and the port is handled as follows:
+  - If `port_map` contains the original port, it is applied (use `null` to drop it).
+  - Otherwise, if dropping defaults is enabled (by implementation), the port is removed if it equals **either** `default_ports['http']` or `default_ports['https']`. Non-default ports are kept.
+
+---
+
 ## Loop-protection behavior
 
 When the computed target URL equals the current request URL (a redirect loop), the redirect is **skipped** and a configurable response is returned via `loop_protection`.
 
-**Default:**
+**Default**
 ```php
 'loop_protection' => [
   'status' => 204,
@@ -405,12 +401,12 @@ When the computed target URL equals the current request URL (a redirect loop), t
 ],
 ```
 
-**Disable loop protection:**
+**Disable**
 ```php
 'loop_protection' => [],   // or: false
 ```
 
-**Custom example (return 200 OK):**
+**Custom**
 ```php
 'loop_protection' => [
   'status' => 200,
@@ -418,31 +414,28 @@ When the computed target URL equals the current request URL (a redirect loop), t
 ],
 ```
 
-**Notes:**
-- Applied **only** when the source URL equals the built target URL.
-- When triggered, **no `Location` header** is sent and the middleware pipeline is skipped.
-- Use 204 for “no content” (typical), or 200 if you want to render a page.
+Notes:
+- Applied only when a loop is detected.
+- When triggered, no `Location` header is sent.
 
---- 
+---
 
 ## Hooks
 
 All hooks are optional.
 
 ### Return conventions
-- Hooks that return **`?string`**: returning a **non-empty string** overrides the corresponding value; returning `null` or `''` leaves it unchanged.
-- Hooks that return an **array shape**: only provided keys are applied; others are left unchanged.
-- Hooks not listed with a return type are **void**; any return value is ignored.
+- Hooks that return `?string`: returning a **non-empty** string overrides the corresponding value; `null`/`''` leaves it unchanged.
+- Hooks that return an array shape: only provided keys are applied; others are left unchanged.
+- Hooks not listed with a return type are `void`; any return value is ignored.
 
 ### Return-value semantics
-- `afterBuildTarget($ctx, $rule, $target): ?string` — return a non-empty string to override `$target`.
-- `beforeApplyUtms($ctx, $rule, $target, $utm): array{target?: string, utm?: array}` — return partial overrides for `$target` and/or `$utm`.
-- `afterApplyUtms($ctx, $rule, $finalTarget, $utm): ?string` — return a non-empty string to override the final URL.
-
-> Note: `beforeSend()` keeps pass-by-reference params so it can mutate `$target` / `$status`. Return `false` to take over the response (short-circuit). Any other return value is ignored.
+- `afterBuildTarget($ctx, $rule, $target): ?string`
+- `beforeApplyUtms($ctx, $rule, $target, $utm): array{target?: string, utm?: array}`
+- `afterApplyUtms($ctx, $rule, $finalTarget, $utm): ?string`
+- `beforeSend($ctx, $rule, &$target, &$status)` — pass-by-ref; return `false` to take over the response
 
 ### Available hooks
-
 - `onSkip($ctx)`
 - `beforeMatch($ctx)`
 - `afterMatch($ctx, $rule)`
@@ -451,7 +444,7 @@ All hooks are optional.
 - `afterBuildTarget($ctx, $rule, $target): ?string`
 - `beforeApplyUtms($ctx, $rule, $target, $utm): array{target?: string, utm?: array}`
 - `afterApplyUtms($ctx, $rule, $finalTarget, $utm): ?string`
-- `beforeSend($ctx, $rule, &$target, &$status)` — return `false` to take over the response
+- `beforeSend($ctx, $rule, &$target, &$status)`
 - `onDryRun($ctx, $rule, $target, $status)`
 - `onError($ctx, \Throwable $e)`
 
@@ -459,9 +452,8 @@ All hooks are optional.
 
 ## Middleware
 
-Interface:
-
-```
+**Interface**
+```php
 namespace rafalmasiarek\Redirector\Middleware;
 
 use rafalmasiarek\Redirector\Context;
@@ -473,17 +465,14 @@ interface MiddlewareInterface {
 }
 ```
 
-Default middleware:
-
-```
-  use rafalmasiarek\Redirector\Middleware\ServerGlobalsMiddleware;
-
-  // Populates $ctx->ip and $ctx->ua from $_SERVER and exposes lazy headers reader.
+**Default middleware**
+```php
+use rafalmasiarek\Redirector\Middleware\ServerGlobalsMiddleware;
+// Populates $ctx->ip and $ctx->ua from $_SERVER and exposes a lazy headers reader.
 ```
 
-Register:
-
-```
+**Register**
+```php
 "middleware" => [
   new \rafalmasiarek\Redirector\Middleware\ServerGlobalsMiddleware(),
 ],
@@ -491,20 +480,9 @@ Register:
 
 ---
 
-## Safety & SEO Notes
-
-- Prefer **301** for permanent moves (SEO), **308** to keep HTTP method (e.g., POST).
-- Use **302/307** for temporary moves or campaigns.
-- When measuring with UTMs, consider whether to **strip** existing UTMs or **preserve** them.
-- Keep an **allowlist** of target hosts to avoid open redirects.
-- Use **dry_run** in staging to verify rules.
-
----
-
 ## Example Rules
 
 1) **Domain migration with UTMs**
-
 ```
 [
   "name"   => "domain-migration",
@@ -516,7 +494,6 @@ Register:
 ```
 
 2) **Exact path → new location**
-
 ```
 [
   "name"   => "old-article",
@@ -528,7 +505,6 @@ Register:
 ```
 
 3) **Wildcard section**
-
 ```
 [
   "name"   => "docs-move",
@@ -539,7 +515,6 @@ Register:
 ```
 
 4) **Regex: product route remap**
-
 ```
 [
   "name"   => "product-regex",
@@ -550,7 +525,6 @@ Register:
 ```
 
 5) **Subdomain consolidation**
-
 ```
 [
   "name"   => "subdomain-merge",
@@ -562,7 +536,6 @@ Register:
 ```
 
 6) **Query-based landing**
-
 ```
 [
   "name"   => "partner-ref",
@@ -574,7 +547,6 @@ Register:
 ```
 
 7) **Full URL regex escape hatch**
-
 ```
 [
   "name"   => "legacy-paths",
@@ -585,33 +557,32 @@ Register:
 ```
 
 8) **Force trailing slash (hook)**
-
-```
+```php
 "hooks" => [
-  "afterBuildTarget" => function($ctx, $rule, &$target) {
+  "afterBuildTarget" => function($ctx, $rule, $target) {
     $p = parse_url($target);
-    $path = rtrim($p["path"] ?? "", "/") . "/";
-    $target = ($p["scheme"]."://".$p["host"]).$path.(isset($p["query"]) ? "?".$p["query"] : "");
+    $path  = rtrim($p["path"] ?? "", "/") . "/";
+    $query = isset($p["query"]) && $p["query"] !== "" ? "?".$p["query"] : "";
+    return ($p["scheme"]."://".$p["host"]).$path.$query;
   },
 ],
 ```
 
 9) **A/B UTM content (hook)**
-
-```
+```php
 "hooks" => [
-  "beforeApplyUtms" => function($ctx, $rule, &$target, &$utm) {
+  "beforeApplyUtms" => function($ctx, $rule, $target, $utm) {
     if (($_COOKIE["ab"] ?? "A") === "B") {
       $utm["utm_content"] = "variant-b";
     }
+    return ["utm" => $utm];
   },
 ],
 ```
 
 10) **Time-based status (middleware)**
-
-```
-new class implements \UniversalRedirector\Middleware\MiddlewareInterface {
+```php
+new class implements \rafalmasiarek\Redirector\Middleware\MiddlewareInterface {
   public function process($ctx, &$rule, &$target, &$status, $next): bool {
     $ok = $next($ctx, $rule, $target, $status);
     $hour = (int)date("G");
@@ -622,13 +593,11 @@ new class implements \UniversalRedirector\Middleware\MiddlewareInterface {
 ```
 
 11) **Skip health & static**
-
 ```
 "skip" => ["/robots.txt","/sitemap.xml","/health"],
 ```
 
 12) **Target allowlist (security)**
-
 ```
 "allowed_targets" => ["new.com","cdn.new.com"],
 ```
@@ -638,11 +607,9 @@ new class implements \UniversalRedirector\Middleware\MiddlewareInterface {
 ## Testing
 
 Enable dry run:
-
 ```
 "dry_run" => true
 ```
-
 You will get a JSON with request context, matched rule, target and status instead of a Location header.
 
 ---
