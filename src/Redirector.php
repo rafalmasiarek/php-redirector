@@ -338,7 +338,7 @@ final class Redirector
         if (!empty($match['path_regex'])) {
             if (preg_match($match['path_regex'], $this->ctx->path, $m)) {
                 foreach ($m as $i => $val) {
-                    if (is_int($i)) $refs['$' . $i] = $val;
+                    if (is_int($i)) $refs['$' . $i] = rawurlencode($val);
                 }
             }
         }
@@ -349,7 +349,7 @@ final class Redirector
             $wRegex = '#^' . str_replace(['.', '*'], ['\.', '(.*)'], $w) . '$#';
             if (preg_match($wRegex, $this->ctx->path, $m)) {
                 foreach ($m as $i => $val) {
-                    if (is_int($i)) $refs['$' . $i] = $val;
+                    if (is_int($i)) $refs['$' . $i] = rawurlencode($val);
                 }
             }
         }
@@ -358,7 +358,7 @@ final class Redirector
         if (!empty($match['url_regex'])) {
             if (preg_match($match['url_regex'], $this->ctx->url, $m)) {
                 foreach ($m as $i => $val) {
-                    if (is_int($i)) $refs['$' . $i] = $val;
+                    if (is_int($i)) $refs['$' . $i] = rawurlencode($val);
                 }
             }
         }
