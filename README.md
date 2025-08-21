@@ -333,7 +333,7 @@ Redirector::make($config)->run();
 
 ---
 
-## Configuration Reference (UPDATED)
+## Configuration Reference
 
 - **dry_run** (bool): when true, outputs JSON instead of sending `Location`
 - **default_status** (int): default 301/302/307/308
@@ -360,6 +360,8 @@ Redirector::make($config)->run();
   - `status`: 301|302|307|308
   - `utm`: per-rule UTM overrides
 - **skip** (string[]): paths to skip (no redirect)
+  - Empty strings in skip are ignored.
+  - A skip entry matches by prefix (path starts with the entry).
 - **hooks** (map<string, callable>): lifecycle callbacks
 - **middleware** (MiddlewareInterface[]): PSR-style pipeline
 
