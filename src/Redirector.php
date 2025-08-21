@@ -182,7 +182,16 @@ final class Redirector
             'hooks'                  => [],              // string => callable
             'middleware'             => [],              // array of MiddlewareInterface
         ];
-        return array_replace_recursive($d, $c);
+        $out = array_replace_recursive($d, $c);
+
+        if (!empty($out['skip']) && is_array($out['skip'])) {
+            $out['skip'] = array_values(array_filter(
+                array_map('strval', $out['skip']),
+                static fn(string $s) => $s !== ''
+            ));
+        }
+
+        return $out;
     }
 
     /**
@@ -240,6 +249,9 @@ final class Redirector
      */
     private function startsWith(string $haystack, string $needle): bool
     {
+        if ($needle === '') {
+            return false;
+        }
         return strncmp($haystack, $needle, strlen($needle)) === 0;
     }
 

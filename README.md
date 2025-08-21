@@ -333,7 +333,7 @@ Redirector::make($config)->run();
 
 ---
 
-## Configuration Reference (UPDATED)
+## Configuration Reference
 
 - **dry_run** (bool): when true, outputs JSON instead of sending `Location`
 - **default_status** (int): default 301/302/307/308
@@ -360,6 +360,8 @@ Redirector::make($config)->run();
   - `status`: 301|302|307|308
   - `utm`: per-rule UTM overrides
 - **skip** (string[]): paths to skip (no redirect)
+  - Empty strings in skip are ignored.
+  - A skip entry matches by prefix (path starts with the entry).
 - **hooks** (map<string, callable>): lifecycle callbacks
 - **middleware** (MiddlewareInterface[]): PSR-style pipeline
 
@@ -611,6 +613,158 @@ Enable dry run:
 "dry_run" => true
 ```
 You will get a JSON with request context, matched rule, target and status instead of a Location header.
+
+---
+
+# Migration: 1.0.0 → 1.1.0
+
+This release focuses on safety and clarity. Most apps won’t need code changes **unless** you:
+- modify URLs via hooks,
+- asserted the old loop-protection status,
+- or depended on **raw** (unencoded) regex captures.
+
+## TL;DR checklist
+
+- [ ] If you mutate `$target/$utm` inside hooks — **migrate to the new return-value contract** (see “Breaking changes #1”).
+- [ ] If you asserted **208** for loop-protection — update to **204** or set your own status/body in `loop_protection`.
+- [ ] If you expected **raw (unencoded)** `$1..$n` — captures are now `rawurlencode()`d.
+- [ ] If you have mixed-case hosts in `allowed_targets` — comparison is now **lowercase**.
+- [ ] If your `skip` list ever contained an empty string — it is now **ignored** (no longer matches everything).
+- [ ] If you want custom “no match” behavior — use the new `no_match` config.
+- [ ] If you rely on `beforeSend` mutating by reference — **ensure your hook invocation preserves references** (see note below).
+
+## Breaking changes
+
+### 1) Hook contract: return values instead of pass-by-reference
+
+**Was (1.0.0):** examples modified `&$target` / `&$utm` by reference (but those hooks weren’t actually applied by ref).
+
+**Now (1.1.0):**
+- `afterBuildTarget($ctx, $rule, $target): ?string` — return a non-empty string to override `$target`.
+- `beforeApplyUtms($ctx, $rule, $target, $utm): array{target?:string, utm?:array}` — return partial overrides.
+- `afterApplyUtms($ctx, $rule, $finalTarget, $utm): ?string` — return a non-empty string to override the final URL.
+- `beforeSend($ctx, $rule, &$target, &$status)` **stays by reference** by contract; return `false` to take over the response.
+
+> **Important:** If your `hook()` dispatcher uses a generic `...$args` call, PHP will **not** preserve references. Either (a) pass refs explicitly for `beforeSend`, or (b) adopt the return-value pattern there as well.
+
+**Migrate your hooks:**
+```php
+// 1.0.0 (old style — by-ref; do not use on these hooks anymore)
+'hooks' => [
+  'afterBuildTarget' => function ($ctx, $rule, &$target) {
+    $target .= (str_contains($target, '?') ? '&' : '?') . 'extra=1';
+  },
+  'beforeApplyUtms' => function ($ctx, $rule, &$target, &$utm) {
+    $utm['utm_content'] = 'variant-b';
+  },
+],
+
+// 1.1.0 (new style — return values)
+'hooks' => [
+  'afterBuildTarget' => function ($ctx, $rule, $target) {
+    return $target . (str_contains($target, '?') ? '&' : '?') . 'extra=1';
+  },
+  'beforeApplyUtms' => function ($ctx, $rule, $target, $utm) {
+    $utm['utm_content'] = 'variant-b';
+    return ['utm' => $utm];
+  },
+  'afterApplyUtms' => function ($ctx, $rule, $final, $utm) {
+    return $final; // or null to keep unchanged
+  },
+],
+```
+
+### 2) Backreferences are now URL-encoded
+
+- Regex/wildcard captures (`$1..$n`) interpolated into `target` are now **`rawurlencode()`d** for safety.
+- If you relied on raw insertion, update your rules or adjust via hooks (decoding is **not recommended**).
+
+---
+
+## Behavior changes (aligned with current code)
+
+- **Loop protection:** configured via:
+  ```php
+  'loop_protection' => ['status' => 204, 'body' => 'Already at target (loop protection).']
+  ```
+  It should be **applied only when** the computed `target` equals the current request URL.  
+  > If your code currently responds unconditionally, re-add the guard:
+  ```php
+  if ($this->urlsEqual($ctx->url, $target)) {
+      $lp = $this->cfg['loop_protection'];
+      $this->respond($lp['status'], $lp['body']);
+      return;
+  }
+  ```
+
+- **Force HTTPS & ports:** when switching to HTTPS, **default ports defined in `default_ports` are dropped** (typically `:80` and `:443`).  
+  Non-default ports are kept unless you explicitly remap via `port_map`.
+
+- **No-match default:** still 204 by default, now configurable via `no_match`.
+
+- **`preserve_path`:** now **applied** — if a rule’s `target` has no explicit path (empty or `/`), the **source path is preserved**.
+
+- **`allowed_targets`:** hostnames are normalized to **lowercase** before comparison.
+
+- **Skip list guard:** empty strings in `skip` are **ignored**.  
+  > If needed, also guard in code:
+  ```php
+  private function startsWith(string $h, string $n): bool {
+      if ($n === '') return false;
+      return strncmp($h, $n, strlen($n)) === 0;
+  }
+  ```
+
+---
+
+## New / updated configuration
+
+```php
+[
+  // Custom fallback when no rule matches
+  'no_match' => [
+    'status' => 204,
+    'body'   => 'No redirect (no rules matched).',
+  ],
+
+  // Loop protection response (used when target == source)
+  'loop_protection' => [
+    'status' => 204,
+    'body'   => 'Already at target (loop protection).',
+  ],
+
+  // Ports & HTTPS policy
+  'default_ports' => ['http' => 80, 'https' => 443],
+  'port_map'      => null, // e.g. [80 => null, 8080 => 8443]; null value = drop port
+
+  // Path/query/fragment preservation
+  'preserve_path'     => true,
+  'preserve_query'    => true,
+  'preserve_fragment' => true,
+]
+```
+
+---
+
+## Preserve-path semantics (explicit)
+
+When `preserve_path` is enabled and the computed target URL **has no explicit path** (empty or `/`), the final URL **reuses the source path** (`$ctx->path`).
+
+Examples:
+- Source `http://old.tld/products/42` + target `https://new.tld` → `https://new.tld/products/42`
+- Source `http://old.tld/` + target `https://new.tld` → `https://new.tld/`
+- If target already contains a path (`https://new.tld/shop`), nothing is changed.
+
+Order: after making the target absolute, **before** query/fragment preservation and UTMs.
+
+---
+
+## Notes for tests & monitoring
+
+- Update assertions that checked for **208** in loop-protection to **204** (or assert your configured status/body).
+- If you snapshot URLs with captures, expect **percent-encoding** now.
+- Normalize fixtures for `allowed_targets` to lowercase.
+- If you rely on `beforeSend` mutations, ensure your hook invocation preserves **by-ref** semantics (or refactor that hook to return values).
 
 ---
 
