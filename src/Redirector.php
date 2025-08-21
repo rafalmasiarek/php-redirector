@@ -77,7 +77,12 @@ final class Redirector
 
         $this->hook('beforeBuildTarget', $ctx, $matchedRule);
         $target = $this->buildTargetUrl($matchedRule);
-        $this->hook('afterBuildTarget', $ctx, $matchedRule, $target);
+
+        $maybe = $this->hook('afterBuildTarget', $ctx, $matchedRule, $target);
+        if (is_string($maybe) && $maybe !== '') {
+            // If hook returned a string, use it as the target URL
+            $target = $maybe;
+        }
 
         // Merge query/fragment
         $target = $this->applyPreservation($target);
@@ -429,15 +434,22 @@ final class Redirector
             }
         }
 
-        // Hooks around UTM
-        $this->hook('beforeApplyUtms', $this->ctx, $rule, $target, $utm);
+        // Hooks around UTM (allow returning modified values)
+        $ret = $this->hook('beforeApplyUtms', $this->ctx, $rule, $target, $utm);
+        if (is_array($ret)) {
+            if (isset($ret['target']) && is_string($ret['target'])) $target = $ret['target'];
+            if (isset($ret['utm']) && is_array($ret['utm'])) $utm = $ret['utm'];
+        }
 
         $tQuery = array_merge($tQuery, $utm);
         $parts['query'] = http_build_query($tQuery);
 
         $final = $this->unparseUrl($parts);
-
-        $this->hook('afterApplyUtms', $this->ctx, $rule, $final, $utm);
+        $ret2  = $this->hook('afterApplyUtms', $this->ctx, $rule, $final, $utm);
+        if (is_string($ret2) && $ret2 !== '') {
+            // If hook returned a string, use it as the final target URL
+            $final = $ret2;
+        }
 
         return $final;
     }

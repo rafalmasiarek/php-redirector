@@ -386,17 +386,26 @@ UniversalRedirector::make($config)->run()
 
 ## Hooks
 
-Available hooks (all optional):
+All hooks are optional.
+
+### Return-value semantics
+- `afterBuildTarget($ctx, $rule, $target): ?string` — return a non-empty string to override `$target`.
+- `beforeApplyUtms($ctx, $rule, $target, $utm): array{target?:string, utm?:array}` — return partial overrides for `$target` and/or `$utm`.
+- `afterApplyUtms($ctx, $rule, $finalTarget, $utm): ?string` — return a non-empty string to override the final URL.
+
+> Note: `beforeSend()` keeps pass-by-reference params so it can mutate `$target`/`$status`. Return `false` to take over the response.
+
+### Available hooks
 
 - `onSkip($ctx)`
 - `beforeMatch($ctx)`
-- `afterMatch($ctx, $rule)`
+- `afterMatch($ctx, $rule)`  
 - `onNoMatch($ctx)`
 - `beforeBuildTarget($ctx, $rule)`
-- `afterBuildTarget($ctx, $rule, &$target)`
-- `beforeApplyUtms($ctx, $rule, &$target, &$utm)`
-- `afterApplyUtms($ctx, $rule, $finalTarget, $utm)`
-- `beforeSend($ctx, $rule, &$target, &$status)` → return `false` to take over the response
+- `afterBuildTarget($ctx, $rule, $target): ?string`
+- `beforeApplyUtms($ctx, $rule, $target, $utm): array{target?:string, utm?:array}`
+- `afterApplyUtms($ctx, $rule, $finalTarget, $utm): ?string`
+- `beforeSend($ctx, $rule, &$target, &$status)` - return `false` to take over the response
 - `onDryRun($ctx, $rule, $target, $status)`
 - `onError($ctx, \Throwable $e)`
 
